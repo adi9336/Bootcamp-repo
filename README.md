@@ -14,7 +14,7 @@ A powerful AI agent built with LangChain, FastAPI, and Streamlit that can answer
 
 - Python 3.8+
 - [Git](https://git-scm.com/)
-- [Poetry](https://python-poetry.org/) (recommended) or pip
+- [UV](https://docs.astral.sh/uv/pip/environments/) (recommended) or pip
 - [OpenAI API Key](https://platform.openai.com/api-keys)
 - [Tavily API Key](https://app.tavily.com/)
 
