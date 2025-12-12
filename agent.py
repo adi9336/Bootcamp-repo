@@ -87,13 +87,15 @@ def create_agent():
     # Create prompt template with memory placeholder
     prompt = ChatPromptTemplate.from_messages([
         ("system", """You are a helpful AI assistant with access to tools for:
-        - Getting current date and  tiem use tool get_current_datetime
+        - Getting current date and  tiem use tool get_current_datetime 
         - Checking weather for any city use tool get_weather
         - Searching the web for information use tool TavilySearchResults
         - Remembering chat history to provide context for future interactions   
 
         
         Use these tools when needed to provide accurate and helpful responses.
+        time and weather information should be current.
+        use indian standard time for all time-related queries.
         Be conversational and remember the context from previous messages."""),
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{input}"),
