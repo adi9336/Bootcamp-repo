@@ -1,142 +1,143 @@
+# streamlit_app.py
 import streamlit as st
-import requests
 import uuid
-from typing import List, Dict, Any, Optional
-import json
+from typing import List, Tuple
+import time
+import traceback
 
-# Set page config
-st.set_page_config(
-    page_title="AI Agent Chat",
-    page_icon="🤖",
-    layout="wide"
+# Import your agent functions from agent.py (must be in same repo)
+# agent.py must provide create_agent() and chat(user_input, agent_executor)
+from agent import create_agent, chat as agent_chat
+
+# ========== Streamlit UI & Config ==========
+st.set_page_config(page_title="Agentic AI Chat", layout="wide", page_icon="🤖")
+st.title("🤖 Agentic AI Chat (Integrated)")
+
+# Sidebar
+st.sidebar.header("Settings")
+st.sidebar.markdown(
+    "This app runs your LangChain agent directly inside Streamlit. "
+    "Make sure OPENAI_API_KEY and TAVILY_API_KEY are set in Streamlit Secrets."
 )
+if st.sidebar.button("Re-initialize Agent (reload)"):
+    # Force re-run to recreate resources
+    st.experimental_rerun()
 
-# Custom CSS for better UI
-st.markdown("""
-    <style>
-    .stApp {
-        max-width: 900px;
-        margin: 0 auto;
-    }
-    .stTextInput > div > div > input {
-        padding: 12px;
-        font-size: 16px;
-    }
-    .stButton>button {
-        width: 100%;
-        padding: 10px;
-        font-weight: bold;
-    }
-    .message {
-        padding: 12px;
-        border-radius: 10px;
-        margin-bottom: 10px;
-        max-width: 80%;
-    }
-    .user-message {
-        background-color: #e3f2fd;
-        margin-left: 20%;
-    }
-    .assistant-message {
-        background-color: #f5f5f5;
-        margin-right: 20%;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# ========== Cached agent initializer ==========
+# Use Streamlit cache_resource to initialize the agent once per app instance
+@st.cache_resource(show_spinner=False)
+def get_agent_executor():
+    try:
+        return create_agent()
+    except Exception as e:
+        # bubble up initialization error
+        raise RuntimeError(f"Agent initialization failed: {e}")
 
-# API endpoint
-API_URL = "http://localhost:8000"
+# Lazy init with user-visible spinner
+if "agent_ready" not in st.session_state:
+    st.session_state.agent_ready = False
 
-# Initialize session state
+if not st.session_state.agent_ready:
+    with st.spinner("Initializing agent (may take 10-30s)..."):
+        try:
+            agent_executor = get_agent_executor()
+            st.session_state.agent_executor = agent_executor
+            st.session_state.agent_ready = True
+            st.success("Agent ready ✅")
+        except Exception as e:
+            st.session_state.agent_ready = False
+            st.error("Failed to initialize agent. Check logs and secrets.")
+            st.exception(e)
+
+# ========== Session state for chat ==========
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = []  # list of {"role": "user"/"assistant", "content": "..."}
 
-# Display chat messages
-st.title("🤖 AI Agent Chat")
-st.caption("Chat with the AI agent powered by LangChain and FastAPI")
+# Top-level UI
+st.markdown("Chat with your LangChain Agent. Tools available: datetime, weather, tavily search.")
+st.divider()
 
-# Display chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# Render existing messages
+for m in st.session_state.messages:
+    role = m.get("role", "user")
+    content = m.get("content", "")
+    if role == "user":
+        with st.chat_message("user"):
+            st.markdown(content)
+    else:
+        with st.chat_message("assistant"):
+            st.markdown(content)
 
-# Chat input
-if prompt := st.chat_input("Type your message here..."):
-    # Add user message to chat history
+# Input
+prompt = st.chat_input("Type your message here...")
+
+if prompt:
+    # append and show user message immediately
     st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    # Display user message
     with st.chat_message("user"):
         st.markdown(prompt)
-    
-    # Show typing indicator
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        message_placeholder.markdown("Thinking...")
-        
-        try:
-            # Call the FastAPI endpoint
-            response = requests.post(
-                f"{API_URL}/chat",
-                json={
-                    "message": prompt,
-                    "session_id": st.session_state.session_id
-                }
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                assistant_response = data["response"]
-                
-                # Update chat history
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": assistant_response
-                })
-                
-                # Display assistant response
-                message_placeholder.markdown(assistant_response)
-            else:
-                error_msg = f"Error: {response.status_code} - {response.text}"
-                message_placeholder.markdown(error_msg)
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": error_msg
-                })
-                
-        except Exception as e:
-            error_msg = f"Connection error: {str(e)}"
-            message_placeholder.markdown(error_msg)
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": error_msg
-            })
 
-# Add a clear chat button
-if st.sidebar.button("Clear Chat History"):
+    # Call the agent (synchronously) and show typing indicator
+    with st.chat_message("assistant"):
+        placeholder = st.empty()
+        placeholder.markdown("Thinking...")
+
+        try:
+            # Ensure agent is initialized
+            if not st.session_state.get("agent_ready") or "agent_executor" not in st.session_state:
+                # Try to initialize again
+                st.warning("Agent not initialized, attempting to initialize...")
+                agent_executor = get_agent_executor()
+                st.session_state.agent_executor = agent_executor
+                st.session_state.agent_ready = True
+            else:
+                agent_executor = st.session_state.agent_executor
+
+            # Call your agent's chat function (from agent.py)
+            # chat(user_input: str, agent_executor) -> str
+            start = time.time()
+            response_text = agent_chat(prompt, agent_executor)
+            elapsed = time.time() - start
+
+            # Update history and UI
+            st.session_state.messages.append({"role": "assistant", "content": response_text})
+            placeholder.markdown(response_text)
+            # optional small footer
+            st.caption(f"Response time: {elapsed:.2f}s")
+
+        except Exception as e:
+            # show useful debug info (but avoid leaking secrets)
+            placeholder.markdown("Error: the agent failed to respond. See details in sidebar logs.")
+            st.session_state.messages.append({"role": "assistant", "content": f"Error: {str(e)}"})
+            # Print traceback in sidebar for debugging
+            with st.sidebar.expander("Error details (traceback)"):
+                st.text(traceback.format_exc())
+
+# Sidebar controls
+st.sidebar.markdown("### Controls")
+if st.sidebar.button("Clear Chat"):
     st.session_state.messages = []
-    st.session_state.session_id = str(uuid.uuid4())  # Generate a new session ID
     st.experimental_rerun()
 
-# Add API status indicator
-st.sidebar.markdown("### API Status")
-try:
-    response = requests.get(f"{API_URL}", timeout=2)
-    if response.status_code == 200:
-        st.sidebar.success("API is running")
-    else:
-        st.sidebar.error(f"API error: {response.status_code}")
-except:
-    st.sidebar.error("API is not running")
+st.sidebar.markdown("Session ID:")
+st.sidebar.code(st.session_state.session_id)
 
-# Add instructions
-st.sidebar.markdown("### How to use")
-st.sidebar.markdown("""
-1. Type your message in the chat input
-2. Press Enter or click Send
-3. The AI agent will respond using its tools
-4. Use the sidebar to clear chat history
-""")
+# Health check panel
+st.sidebar.markdown("### Agent Status")
+if st.session_state.get("agent_ready"):
+    st.sidebar.success("Agent initialized and ready")
+else:
+    st.sidebar.error("Agent not ready - check logs and secrets")
+
+# Instructions
+st.sidebar.markdown(
+    """
+    **Deployment notes**
+    1. Add `OPENAI_API_KEY` and `TAVILY_API_KEY` to Streamlit Secrets (or set as env vars).
+    2. Keep `agent.py` in the same repo. This app imports `create_agent()` and `chat()` from it.
+    3. Add dependencies in requirements.txt and deploy on Streamlit Cloud.
+    """
+)
