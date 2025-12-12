@@ -73,8 +73,7 @@ def create_agent():
     llm = ChatOpenAI(
         model="gpt-4.1"
     )
-    
-    # Initialize Tavily search tool (LangChain built-in)
+        # Initialize Tavily search tool (LangChain built-in)
     tavily_tool = TavilySearchResults(
         max_results=3,
         search_depth="basic",  # or "advanced" for more detailed results
@@ -88,9 +87,11 @@ def create_agent():
     # Create prompt template with memory placeholder
     prompt = ChatPromptTemplate.from_messages([
         ("system", """You are a helpful AI assistant with access to tools for:
-        - Getting current date and time
-        - Checking weather for any city
-        - Searching the web for information
+        - Getting current date and  tiem use tool get_current_datetime
+        - Checking weather for any city use tool get_weather
+        - Searching the web for information use tool TavilySearchResults
+        - Remembering chat history to provide context for future interactions   
+
         
         Use these tools when needed to provide accurate and helpful responses.
         Be conversational and remember the context from previous messages."""),
