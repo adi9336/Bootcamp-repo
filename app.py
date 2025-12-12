@@ -19,25 +19,7 @@ st.sidebar.markdown(
     "This app runs your LangChain agent directly inside Streamlit. "
     "Make sure OPENAI_API_KEY and TAVILY_API_KEY are set in Streamlit Secrets."
 )
-if st.sidebar.button("Re-initialize Agent (reload)"):
-    try:
-        # clear cached resource (works for function decorated with @st.cache_resource)
-        get_agent_executor.clear()
-    except Exception:
-        # fallback: remove stored executor from session_state
-        st.session_state.pop("agent_executor", None)
-        st.session_state["agent_ready"] = False
 
-    # re-create agent and mark ready
-    try:
-        st.session_state.agent_executor = get_agent_executor()
-        st.session_state.agent_ready = True
-        st.success("Agent re-initialized ✅")
-    except Exception as e:
-        st.session_state.agent_ready = False
-        st.error("Failed to re-initialize agent. Check logs.")
-        with st.sidebar.expander("Init error"):
-            st.text(str(e))
 
 
 # ========== Cached agent initializer ==========
