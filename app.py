@@ -137,7 +137,8 @@ if prompt:
 st.sidebar.markdown("### Controls")
 if st.sidebar.button("Clear Chat"):
     st.session_state.messages = []
-    st.experimental_rerun()
+    # do NOT rerun here, just update UI on next tick
+    st.success("Chat cleared!")
 
 st.sidebar.markdown("Session ID:")
 st.sidebar.code(st.session_state.session_id)
