@@ -134,28 +134,10 @@ if prompt:
                 st.text(traceback.format_exc())
 
 # Sidebar controls
-st.sidebar.markdown("### Controls")
-if st.sidebar.button("Clear Chat"):
-    st.session_state.messages = []
-    # do NOT rerun here, just update UI on next tick
-    st.success("Chat cleared!")
 
-st.sidebar.markdown("Session ID:")
-st.sidebar.code(st.session_state.session_id)
-
-# Health check panel
-st.sidebar.markdown("### Agent Status")
-if st.session_state.get("agent_ready"):
-    st.sidebar.success("Agent initialized and ready")
-else:
-    st.sidebar.error("Agent not ready - check logs and secrets")
 
 # Instructions
 st.sidebar.markdown(
-    """
-    **Deployment notes**
-    1. Add `OPENAI_API_KEY` and `TAVILY_API_KEY` to Streamlit Secrets (or set as env vars).
-    2. Keep `agent.py` in the same repo. This app imports `create_agent()` and `chat()` from it.
-    3. Add dependencies in requirements.txt and deploy on Streamlit Cloud.
+    """HI
     """
 )
