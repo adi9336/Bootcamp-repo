@@ -23,11 +23,22 @@ load_dotenv()
 # STEP 1: Define Custom Tools
 # =============================================================================
 
+try:
+    # Python 3.9+
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None 
+    
 @tool
 def get_current_datetime() -> str:
-    """Get the current date and time."""
-    now = datetime.now()
-    return now.strftime("%Y-%m-%d %H:%M:%S")
+    """Return current date & time in Indian Standard Time (IST)."""
+    if ZoneInfo is not None:
+        now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    else:
+        # fallback if zoneinfo not available (shouldn't happen on modern Python)
+        now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    # human friendly format, e.g., "2025-12-12 16:37 (IST)"
+    return now.strftime("%Y-%m-%d %H:%M:%S (IST)")
 
 @tool
 def get_weather(city: str) -> str:
