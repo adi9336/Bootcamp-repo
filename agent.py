@@ -1,21 +1,20 @@
 """
-LangChain Agent with Tools and Memory (LangChain v1 - Fixed)
+LangChain Agent with Tools and Memory (LangChain v1 - Groq Version)
 A beginner-friendly agent using Tavily search, datetime, weather tools, and chat history
 """
 
-# CORRECTED IMPORTS FOR LANGCHAIN V1 
+# CORRECTED IMPORTS FOR LANGCHAIN V1
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage
-# from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq  # Changed from langchain_openai
 from langchain_community.tools.tavily_search import TavilySearchResults
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import os
 import sys
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 
 # Load environment variables from .env file
 load_dotenv()
@@ -24,12 +23,23 @@ load_dotenv()
 # STEP 1: Define Custom Tools
 # =============================================================================
 
+try:
+    # Python 3.9+
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None 
+
 @tool
 def get_current_datetime() -> str:
-    """Get the current date and time. Returns a string with the current date and time."""
+    """Return current date & time in Indian Standard Time (IST)."""
     try:
-        now = datetime.now()
-        return now.strftime("%Y-%m-%d %H:%M:%S")
+        if ZoneInfo is not None:
+            now = datetime.now(ZoneInfo("Asia/Kolkata"))
+        else:
+            # Fallback if zoneinfo not available
+            now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        # Human friendly format, e.g., "2025-12-13 16:37:45 (IST)"
+        return now.strftime("%Y-%m-%d %H:%M:%S (IST)")
     except Exception as e:
         return f"Error getting current time: {str(e)}"
 
@@ -73,9 +83,9 @@ chat_history = []
 def create_agent():
     """Initialize and return the agent executor."""
     
-    # Initialize the LLM with tool calling support
+    # Initialize the Groq LLM with tool calling support
     llm = ChatGroq(
-        model_name="openai/gpt-oss-120b",
+       model_name="openai/gpt-oss-120b",
         temperature=0.7,
         max_tokens=1024,
         timeout=30,
@@ -122,26 +132,31 @@ def create_agent():
     # Create prompt template with memory placeholder
     prompt = ChatPromptTemplate.from_messages([
         ("system", """You are a helpful AI assistant with access to tools for:
-        - Getting current date and time
-        - Checking weather for any city
-        - Searching the web for information
+        - Getting current date and time (use tool: get_current_datetime)
+        - Checking weather for any city (use tool: get_weather)
+        - Searching the web for information (use tool: tavily_search_results_json)
+        - Remembering chat history to provide context for future interactions
         
         Use these tools when needed to provide accurate and helpful responses.
+        Time and weather information should be current.
+        Use Indian Standard Time (IST) for all time-related queries.
         Be conversational and remember the context from previous messages."""),
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{input}"),
         MessagesPlaceholder(variable_name="agent_scratchpad"),
     ])
     
-    # Create the agent (FIXED: correct function name for v1)
+    # Create the agent
     agent = create_tool_calling_agent(llm, tools, prompt)
     
-    # Create agent executor (FIXED: correct class name for v1)
+    # Create agent executor
     agent_executor = AgentExecutor(
         agent=agent,
         tools=tools,
         verbose=True,
-        handle_parsing_errors=True
+        handle_parsing_errors=True,
+        max_iterations=5,
+        max_execution_time=60
     )
     
     return agent_executor
@@ -230,7 +245,7 @@ def chat(user_input: str, agent_executor):
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("LangChain Agent with Tools and Memory (v1)")
+    print("LangChain Agent with Tools and Memory (Groq Version)")
     print("=" * 60)
     print("\n📋 Loading API keys from .env file...")
     print("\nRequired API Keys:")
@@ -240,16 +255,16 @@ if __name__ == "__main__":
     
     # Check for API keys
     if not os.getenv("GROQ_API_KEY"):
-        print("\n⚠  GROQ_API_KEY not found in .env file!")
+        print("\n⚠️  GROQ_API_KEY not found in .env file!")
         print("\nPlease create a .env file with:")
-        print("GROQ_API_KEY=your-openai-key-here")
-        print("TAVILY_API_KEY=your-tavily-key-here")
+        print("GROQ_API_KEY=gsk-your-groq-key-here")
+        print("TAVILY_API_KEY=tvly-your-tavily-key-here")
         sys.exit(1)
     
     if not os.getenv("TAVILY_API_KEY"):
-        print("\n⚠  TAVILY_API_KEY not found in .env file!")
+        print("\n⚠️  TAVILY_API_KEY not found in .env file!")
         print("\nPlease add to your .env file:")
-        print("TAVILY_API_KEY=your-tavily-key-here")
+        print("TAVILY_API_KEY=tvly-your-tavily-key-here")
         sys.exit(1)
     
     print("✅ API keys loaded successfully!")
@@ -308,20 +323,20 @@ if __name__ == "__main__":
 # Installation & Example Usage:
 # =============================================================================
 """
-INSTALLATION (LangChain v1):
-----------------------------
-pip install langchain langchain-openai langchain-core langchain-community tavily-python requests python-dotenv
+INSTALLATION (LangChain v1 with Groq):
+--------------------------------------
+pip install langchain langchain-groq langchain-core langchain-community tavily-python requests python-dotenv
 
 SETUP .ENV FILE:
 ----------------
 Create a file named .env in the same directory as your script:
 
-OPENAI_API_KEY=sk-your-openai-key-here
+GROQ_API_KEY=gsk-your-groq-key-here
 TAVILY_API_KEY=tvly-your-tavily-key-here
 
 Example .env file content:
 --------------------------
-OPENAI_API_KEY=sk-proj-abc123xyz...
+GROQ_API_KEY=gsk_abc123xyz...
 TAVILY_API_KEY=tvly-abc123xyz...
 
 RUN:
@@ -333,7 +348,7 @@ EXAMPLE CONVERSATION:
 You: What time is it?
 Agent: [Uses get_current_datetime tool]
 
-You: What's the weather in Paris?
+You: What's the weather in Mumbai?
 Agent: [Uses get_weather tool]
 
 You: Search for recent AI news
@@ -348,17 +363,32 @@ COMMANDS:
 - 'history' - View chat history
 - 'clear' - Clear chat history
 
+GROQ MODELS AVAILABLE:
+---------------------
+- llama-3.3-70b-versatile (Best for tool calling - RECOMMENDED)
+- llama-3.1-70b-versatile
+- mixtral-8x7b-32768
+- gemma2-9b-it
+
 KEY FEATURES:
 -------------
+✅ Uses Groq API instead of OpenAI (faster and often free)
 ✅ Loads API keys from .env file (using python-dotenv)
 ✅ LangChain v1 compatible imports
 ✅ Proper message formatting with HumanMessage/AIMessage
 ✅ Simple array-based chat history (last 10 exchanges)
 ✅ Three useful tools: datetime, weather, web search
 ✅ Error handling and user-friendly messages
+✅ Indian Standard Time (IST) support
 
 GET API KEYS:
 -------------
-- OpenAI: https://platform.openai.com/api-keys
+- Groq: https://console.groq.com/keys (Free tier available!)
 - Tavily: https://app.tavily.com/
+
+NOTES:
+------
+- Groq provides very fast inference
+- llama-3.3-70b-versatile has excellent tool calling capabilities
+- Free tier includes generous rate limits
 """
