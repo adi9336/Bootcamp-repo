@@ -3,19 +3,18 @@ LangChain Agent with Tools and Memory (LangChain v1 - Fixed)
 A beginner-friendly agent using Tavily search, datetime, weather tools, and chat history
 """
 
-# CORRECTED IMPORTS FOR LANGCHAIN V1 
+# CORRECTED IMPORTS FOR LANGCHAIN V1
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage
-# from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_community.tools.tavily_search import TavilySearchResults
 from datetime import datetime
 import requests
 import os
 import sys
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 
 # Load environment variables from .env file
 load_dotenv()
@@ -24,14 +23,22 @@ load_dotenv()
 # STEP 1: Define Custom Tools
 # =============================================================================
 
+try:
+    # Python 3.9+
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None 
+    
 @tool
 def get_current_datetime() -> str:
-    """Get the current date and time. Returns a string with the current date and time."""
-    try:
-        now = datetime.now()
-        return now.strftime("%Y-%m-%d %H:%M:%S")
-    except Exception as e:
-        return f"Error getting current time: {str(e)}"
+    """Return current date & time in Indian Standard Time (IST)."""
+    if ZoneInfo is not None:
+        now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    else:
+        # fallback if zoneinfo not available (shouldn't happen on modern Python)
+        now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    # human friendly format, e.g., "2025-12-12 16:37 (IST)"
+    return now.strftime("%Y-%m-%d %H:%M:%S (IST)")
 
 @tool
 def get_weather(city: str) -> str:
@@ -73,42 +80,11 @@ chat_history = []
 def create_agent():
     """Initialize and return the agent executor."""
     
-    # Initialize the LLM with tool calling support
-    llm = ChatGroq(
-        model_name="openai/gpt-oss-120b",
-        temperature=0.7,
-        max_tokens=1024,
-        timeout=30,
-        max_retries=2,
-        model_kwargs={
-            "tool_choice": "auto",
-            "tools": [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "get_current_datetime",
-                        "description": "Get the current date and time."
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "get_weather",
-                        "description": "Get current weather for a city.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "city": {"type": "string", "description": "The city name"}
-                            },
-                            "required": ["city"]
-                        }
-                    }
-                }
-            ]
-        }
+    # Initialize the LLM
+    llm = ChatOpenAI(
+        model="gpt-4.1"
     )
-    
-    # Initialize Tavily search tool (LangChain built-in)
+        # Initialize Tavily search tool (LangChain built-in)
     tavily_tool = TavilySearchResults(
         max_results=3,
         search_depth="basic",  # or "advanced" for more detailed results
@@ -122,11 +98,15 @@ def create_agent():
     # Create prompt template with memory placeholder
     prompt = ChatPromptTemplate.from_messages([
         ("system", """You are a helpful AI assistant with access to tools for:
-        - Getting current date and time
-        - Checking weather for any city
-        - Searching the web for information
+        - Getting current date and  tiem use tool get_current_datetime 
+        - Checking weather for any city use tool get_weather
+        - Searching the web for information use tool TavilySearchResults
+        - Remembering chat history to provide context for future interactions   
+
         
         Use these tools when needed to provide accurate and helpful responses.
+        time and weather information should be current.
+        use indian standard time for all time-related queries.
         Be conversational and remember the context from previous messages."""),
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{input}"),
@@ -175,54 +155,35 @@ def chat(user_input: str, agent_executor):
                 role, content = msg
                 if role == "human":
                     formatted_history.append(HumanMessage(content=content))
-                elif role == "assistant" and content:  # Only add non-empty messages
-                    if isinstance(content, str):
-                        formatted_history.append(AIMessage(content=content))
+                elif role == "assistant":
+                    formatted_history.append(AIMessage(content=content))
         
         # Ensure the agent_executor is initialized
         if agent_executor is None:
             agent_executor = create_agent()
         
-        # Prepare the input for the agent
-        input_data = {
+        # Run the agent with current chat history
+        response = agent_executor.invoke({
             "input": user_input,
             "chat_history": formatted_history or []
-        }
+        })
         
-        # Run the agent with current chat history
-        try:
-            response = agent_executor.invoke(input_data)
-            
-            # Get the output safely
-            if isinstance(response, dict):
-                output = response.get('output', 'No response generated')
-            elif hasattr(response, 'output'):
-                output = response.output
-            else:
-                output = str(response)
-                
-            # Ensure output is a string
-            if not isinstance(output, str):
-                output = str(output)
-                
-        except Exception as e:
-            output = f"I encountered an error: {str(e)}. Could you please rephrase your question?"
+        # Get the output safely
+        output = response.get('output', 'No response generated')
         
-        # Update chat history with the response
-        if output and output != 'No response generated':
-            chat_history.append(("human", user_input))
-            chat_history.append(("assistant", output))
+        # Update chat history
+        chat_history.append(("human", user_input))
+        chat_history.append(("assistant", output))
         
         # Keep only last 10 exchanges (20 messages) to prevent context from growing too large
         if len(chat_history) > 20:
             chat_history = chat_history[-20:]
         
-        return output if output else "I'm not sure how to respond to that. Could you rephrase?"
-        
+        return output
     except Exception as e:
         error_msg = f"Error in chat function: {str(e)}"
         print(error_msg)  # Log the error for debugging
-        return "I'm sorry, I encountered an error processing your request. Please try again."
+        return error_msg
 
 # =============================================================================
 # STEP 5: Main Execution
@@ -234,15 +195,15 @@ if __name__ == "__main__":
     print("=" * 60)
     print("\n📋 Loading API keys from .env file...")
     print("\nRequired API Keys:")
-    print("- GROQ_API_KEY (for LLM)")
+    print("- OPENAI_API_KEY (for LLM)")
     print("- TAVILY_API_KEY (for web search)")
     print("=" * 60)
     
     # Check for API keys
-    if not os.getenv("GROQ_API_KEY"):
-        print("\n⚠  GROQ_API_KEY not found in .env file!")
+    if not os.getenv("OPENAI_API_KEY"):
+        print("\n⚠  OPENAI_API_KEY not found in .env file!")
         print("\nPlease create a .env file with:")
-        print("GROQ_API_KEY=your-openai-key-here")
+        print("OPENAI_API_KEY=your-openai-key-here")
         print("TAVILY_API_KEY=your-tavily-key-here")
         sys.exit(1)
     
