@@ -85,11 +85,37 @@ def create_agent():
     
     # Initialize the Groq LLM with tool calling support
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile",  # Best model for tool calling
+       model_name="openai/gpt-oss-120b",
         temperature=0.7,
-        max_tokens=2048,
-        timeout=60,
-        max_retries=2
+        max_tokens=1024,
+        timeout=30,
+        max_retries=2,
+        model_kwargs={
+            "tool_choice": "auto",
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_current_datetime",
+                        "description": "Get the current date and time."
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "description": "Get current weather for a city.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "city": {"type": "string", "description": "The city name"}
+                            },
+                            "required": ["city"]
+                        }
+                    }
+                }
+            ]
+        }
     )
     
     # Initialize Tavily search tool (LangChain built-in)
