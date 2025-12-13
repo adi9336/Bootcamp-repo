@@ -173,12 +173,17 @@ if submit and user_input and user_input.strip():
         agent_exec = st.session_state.get("agent_executor") or ensure_agent_ready()
         start = time.time()
         # Call your agent.chat synchronously
-        response = agent_chat(text, agent_exec)
-        if not isinstance(response, str):
-            try:
-                response = str(response)
-            except Exception:
-                response = "<non-text response from agent>"
+        try:
+            response = agent_chat(text, agent_exec)
+            if response is None:
+                response = "I didn't receive a response. Please try again."
+            elif not isinstance(response, str):
+                try:
+                    response = str(response)
+                except Exception as e:
+                    response = f"Received an unexpected response format: {type(response).__name__}"
+        except Exception as e:
+            response = f"I encountered an error while processing your request: {str(e)}"
 
         # Update assistant message in session_state with final text
         # Find last assistant message index (should be the last element)

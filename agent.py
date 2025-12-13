@@ -208,17 +208,21 @@ def chat(user_input: str, agent_executor):
         try:
             response = agent_executor.invoke(input_data)
             
-            # Get the output safely
-            if isinstance(response, dict):
-                output = response.get('output', 'No response generated')
-            elif hasattr(response, 'output'):
-                output = response.output
+            # Get the output safely with more robust error handling
+            if response is None:
+                output = "No response was generated. Please try again."
+            elif isinstance(response, dict):
+                output = response.get('output', '')
+                if not output:  # If output is empty or None
+                    output = "I didn't get a proper response. Could you rephrase your question?"
+            elif hasattr(response, 'output') and response.output is not None:
+                output = str(response.output)
             else:
-                output = str(response)
+                output = str(response) if response is not None else "No response was generated."
                 
-            # Ensure output is a string
-            if not isinstance(output, str):
-                output = str(output)
+            # Ensure output is a non-empty string
+            if not output or not isinstance(output, str):
+                output = "I'm having trouble understanding. Could you rephrase your question?"
                 
         except Exception as e:
             output = f"I encountered an error: {str(e)}. Could you please rephrase your question?"
