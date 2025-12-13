@@ -1,5 +1,5 @@
 """
-LangChain Agent with Tools and Memory (LangChain v1 - Groq Version - Fixed)
+LangChain Agent with Tools and Memory (LangChain v1 - Groq Version)
 A beginner-friendly agent using Tavily search, datetime, weather tools, and chat history
 """
 
@@ -8,7 +8,7 @@ from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage
-from langchain_groq import ChatGroq
+from langchain_groq import ChatGroq  # Changed from langchain_openai
 from langchain_community.tools.tavily_search import TavilySearchResults
 from datetime import datetime, timedelta
 import requests
@@ -83,19 +83,45 @@ chat_history = []
 def create_agent():
     """Initialize and return the agent executor."""
     
-    # Initialize the Groq LLM - SIMPLIFIED (no manual tool_kwargs needed)
+    # Initialize the Groq LLM with tool calling support
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile",  # Best model for tool calling
+       model_name="openai/gpt-oss-120b",
         temperature=0.7,
-        max_tokens=2048,
-        timeout=60,
-        max_retries=2
+        max_tokens=1024,
+        timeout=30,
+        max_retries=2,
+        model_kwargs={
+            "tool_choice": "auto",
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_current_datetime",
+                        "description": "Get the current date and time."
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "description": "Get current weather for a city.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "city": {"type": "string", "description": "The city name"}
+                            },
+                            "required": ["city"]
+                        }
+                    }
+                }
+            ]
+        }
     )
     
     # Initialize Tavily search tool (LangChain built-in)
     tavily_tool = TavilySearchResults(
         max_results=3,
-        search_depth="basic",
+        search_depth="basic",  # or "advanced" for more detailed results
         include_answer=True,
         include_raw_content=False
     )
@@ -120,7 +146,7 @@ def create_agent():
         MessagesPlaceholder(variable_name="agent_scratchpad"),
     ])
     
-    # Create the agent - LangChain handles tool binding automatically
+    # Create the agent
     agent = create_tool_calling_agent(llm, tools, prompt)
     
     # Create agent executor
@@ -130,8 +156,7 @@ def create_agent():
         verbose=True,
         handle_parsing_errors=True,
         max_iterations=5,
-        max_execution_time=60,
-        return_intermediate_steps=False  # Added for cleaner output
+        max_execution_time=60
     )
     
     return agent_executor
@@ -163,9 +188,9 @@ def chat(user_input: str, agent_executor):
         for msg in chat_history:
             if isinstance(msg, tuple) and len(msg) == 2:
                 role, content = msg
-                if role == "human" and content:  # Added content check
+                if role == "human":
                     formatted_history.append(HumanMessage(content=content))
-                elif role == "assistant" and content:
+                elif role == "assistant" and content:  # Only add non-empty messages
                     if isinstance(content, str):
                         formatted_history.append(AIMessage(content=content))
         
@@ -176,40 +201,34 @@ def chat(user_input: str, agent_executor):
         # Prepare the input for the agent
         input_data = {
             "input": user_input,
-            "chat_history": formatted_history if formatted_history else []
+            "chat_history": formatted_history or []
         }
         
         # Run the agent with current chat history
         try:
             response = agent_executor.invoke(input_data)
             
-            # Get the output safely with better error handling
+            # Get the output safely
             if isinstance(response, dict):
-                output = response.get('output', '')
+                output = response.get('output', 'No response generated')
             elif hasattr(response, 'output'):
                 output = response.output
             else:
-                output = str(response) if response else ''
+                output = str(response)
                 
             # Ensure output is a string
             if not isinstance(output, str):
-                output = str(output) if output else ''
-            
-            # Additional check for empty output
-            if not output or output == 'None':
-                output = "I apologize, but I couldn't generate a proper response. Could you please rephrase your question?"
+                output = str(output)
                 
         except Exception as e:
-            error_details = str(e)
-            print(f"Agent execution error: {error_details}")  # Debug logging
-            output = f"I encountered an error: {error_details}. Could you please rephrase your question?"
+            output = f"I encountered an error: {str(e)}. Could you please rephrase your question?"
         
-        # Update chat history only with valid outputs
-        if output and output != 'No response generated' and not output.startswith("I encountered an error"):
+        # Update chat history with the response
+        if output and output != 'No response generated':
             chat_history.append(("human", user_input))
             chat_history.append(("assistant", output))
         
-        # Keep only last 10 exchanges (20 messages)
+        # Keep only last 10 exchanges (20 messages) to prevent context from growing too large
         if len(chat_history) > 20:
             chat_history = chat_history[-20:]
         
@@ -218,8 +237,6 @@ def chat(user_input: str, agent_executor):
     except Exception as e:
         error_msg = f"Error in chat function: {str(e)}"
         print(error_msg)  # Log the error for debugging
-        import traceback
-        traceback.print_exc()  # Print full traceback for debugging
         return "I'm sorry, I encountered an error processing your request. Please try again."
 
 # =============================================================================
@@ -259,8 +276,6 @@ if __name__ == "__main__":
         print("✅ Agent ready!\n")
     except Exception as e:
         print(f"\n❌ Failed to initialize agent: {str(e)}")
-        import traceback
-        traceback.print_exc()
         sys.exit(1)
     
     # Interactive chat loop
@@ -303,8 +318,6 @@ if __name__ == "__main__":
             print("\n\nInterrupted. Type 'quit' to exit.\n")
         except Exception as e:
             print(f"\n❌ Error: {str(e)}\n")
-            import traceback
-            traceback.print_exc()
 
 # =============================================================================
 # Installation & Example Usage:
@@ -350,30 +363,22 @@ COMMANDS:
 - 'history' - View chat history
 - 'clear' - Clear chat history
 
-RECOMMENDED GROQ MODELS:
-------------------------
-- llama-3.3-70b-versatile (BEST for tool calling - RECOMMENDED)
-- llama-3.1-70b-versatile (Good alternative)
-- mixtral-8x7b-32768 (Fast but less accurate with tools)
-
-KEY FIXES IN THIS VERSION:
---------------------------
-✅ Removed manual model_kwargs (LangChain handles tool binding automatically)
-✅ Better error handling with detailed logging
-✅ Added traceback printing for debugging
-✅ Improved None value checks throughout
-✅ Better output validation
-✅ Added content checks before appending to history
+GROQ MODELS AVAILABLE:
+---------------------
+- llama-3.3-70b-versatile (Best for tool calling - RECOMMENDED)
+- llama-3.1-70b-versatile
+- mixtral-8x7b-32768
+- gemma2-9b-it
 
 KEY FEATURES:
 -------------
-✅ Uses Groq API (faster and free tier available)
-✅ Loads API keys from .env file
-✅ LangChain v1 compatible
-✅ Proper message formatting
-✅ Chat history (last 10 exchanges)
+✅ Uses Groq API instead of OpenAI (faster and often free)
+✅ Loads API keys from .env file (using python-dotenv)
+✅ LangChain v1 compatible imports
+✅ Proper message formatting with HumanMessage/AIMessage
+✅ Simple array-based chat history (last 10 exchanges)
 ✅ Three useful tools: datetime, weather, web search
-✅ Comprehensive error handling
+✅ Error handling and user-friendly messages
 ✅ Indian Standard Time (IST) support
 
 GET API KEYS:
@@ -381,12 +386,9 @@ GET API KEYS:
 - Groq: https://console.groq.com/keys (Free tier available!)
 - Tavily: https://app.tavily.com/
 
-TROUBLESHOOTING:
-----------------
-If you still get "NoneType is not iterable" error:
-1. Check that both API keys are valid
-2. Try with a simpler question first
-3. Check the console output for detailed error messages
-4. Ensure you have the latest versions of packages
-5. Try: pip install --upgrade langchain langchain-groq langchain-core
-""
+NOTES:
+------
+- Groq provides very fast inference
+- llama-3.3-70b-versatile has excellent tool calling capabilities
+- Free tier includes generous rate limits
+"""
